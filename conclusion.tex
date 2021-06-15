@@ -1,0 +1,19 @@
+\section{Conclusion and Future Work}
+\label{6.0}
+\subsection{Conclusion}
+\label{6.1}
+Serialization of binary data using length-prefix notation is not based on one fundamental theoretical model but rather implemented by each party with their own technique in mind. This can lead to critical security flaws, as seen with the 'Heartbleed' exploit. Whereas Calc-regular languages propose a theoretical foundation for length-prefix languages with fixed nesting, Calc-LL(1) languages try to extend this definition to make it applicable to most practical formats also employing variable nesting. Using Calc-regular languages and techniques from LL(1) parsing, Calc-LL(1) languages are able to efficiently handle and parse length-prefix languages with variable nesting.\\\\ This thesis covers two formats of length-prefix notation and produces an universal automaton which can be applied to both these formats. The first format, a length-prefix language employing delimiter symbols to mark the end of the length field as well as the end of the content field, is represented by the 'netstring' example. The second, more practical language is represented by 'Google protocol buffers'. With these schema-based formats also employing a type field, no delimiters exist between type, length or content fields. By establishing the definition of Calc-PDAs and Calc-EBNFs, a major step towards a solid fundamental form for handling length-prefix formats with variable nesting in data serialization has been taken.
+\subsection{Future Work}
+\label{6.2}
+The results presented in this thesis are just another step on the way to establish a complete, underlying definition for handling length-prefix languages. Eventually, this definition can help to eliminate bugs, errors and security flaws that can occur in various formats using length-prefix notation. There are several topics that still have to be covered in the future to complete this overall theoretical foundation. Hopefully, our research results can act as an entry point for one of those important topics, among others:
+\begin{itemize}
+    \item Research on Calc-PDAs for length-prefix formats that differ from the two examples presented in this thesis,
+    \item more research on Calc-EBNFs as presented in \hyperref[5.0]{5}, especially with the intention to create a universal Calc-EBNF for Calc-LL(1) languages,
+    \item parser generators for Calc-LL(1) languages. Having established Calc-PDAs and a potential universal Calc-EBNF, this would be a big step also towards the practicality of this research topic,
+    \item examine theoretical formal language properties of Calc-LL(1) languages,
+    \item and much more.
+\end{itemize}
+
+\subsection{Appendix}
+\label{6.3}
+Appended to this thesis are fully sized copies of the Calc-PDAs in figures \hyperref[fig:fig-2-netstring-Calc-pda-1]{2} and \hyperref[fig:fig-6-protobuf-Calc-pda-1]{6}.

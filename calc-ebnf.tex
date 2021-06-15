@@ -1,0 +1,62 @@
+\section{EBNF-like Grammars for Calc-LL(1) Languages}
+\label{5.0}
+\subsection{Differences to conventional formal grammars}
+\label{5.1}
+In this chapter, we want to lay some groundwork on the creation of grammars for Calc-LL(1) languages. We will use the conventional notation of Extended Backus-Naur form (EBNF) \cite{EBNF} with additional features distinct to Calc-LL(1) languages. As shown throughout \hyperref[4.0]{chapter 4}, conditions and operations are a vital part of the Calc-LL(1) concept. Therefore, these tools also have to be implemented in our 'Calc-EBNF' to guarantee a correct grammar which is equivalent to the corresponding Calc-PDA. In sections \hyperref[5.2]{5.2} and \hyperref[5.3]{5.3}, propositions for Calc-EBNFs for netstrings and protobufs are made to show how these grammars could look like.\\\\
+Before examining these examples, though, some explanations have to be made:
+\begin{itemize}
+    \item Due to us working on the binary level of data serialization, there are only two terminal symbols representing bits: 0 and 1,
+    \item the denomination $\{0,1\}^n$ refers to a sequence of bits of length $n$,
+    \item the denomination '\texttt{T}$^n$' with \texttt{T} being a non-terminal refers to a concatenation of these non-terminals where the \textbf{total length measured in terminal symbols} of \texttt{T} is of length $n$.
+    \item The current position is called '\texttt{cp}' and is incremented by 1 for each \textbf{eight} terminal symbols read (as we are looking at bytes which consist of eight bits each), the topmost value on the container stack is called '\texttt{stack-val}'.
+    \item The notation '[$\ell\leftarrow$]\texttt{A}' means, that some function is called which converts the value of the non-terminal \texttt{A} into a numeric value which is then allocated to the variable $\ell$. As our non-terminals are either 0 or 1, each non-terminal will eventually be broken down to a sequence of bits \{$0,1$\}$^m$, which can easily be used to determine the value of $\ell$ with $\ell < 2^m$.\\$E.g.$, '[$\ell\leftarrow$]\texttt{length}' saves the numeric value from the length field into the variable '$\ell$' for further use.
+    \item the operations \texttt{push(x)}, \texttt{pop} and \texttt{lookup(y)}\footnote{These operations work just as explained in \hyperref[4.2]{4.2}.} are included in Calc-EBNFs.
+    Each operation is embedded in square brackets and can be described as behaving similarly to a non-terminal, as each operation executes as soon as it is called and is the lowest unit in Calc-EBNFs.
+    \item By writing '\texttt{B[$\rightarrow$(u,v,w)]}', the variables \texttt{u}, \texttt{v} and \texttt{w} are given as parameters to the non-terminal \texttt{B}.
+    \item A non-terminal \texttt{B} can use parameters to decide which right-side production rule to choose from. These parameters can be evaluated to logical statements producing a boolean value. As our grammar has to be deterministic, both statements can never output the same boolean value with the same inputs. The evaluation of the non-terminal \texttt{B} to some right-hand production \texttt{prod} by the logical formula $L$ is denominated with '\texttt{B[$L$]:= prod}' where $L$ uses the assigned parameters \texttt{u,v,w} of \texttt{B} and equals either \texttt{true} or \texttt{false}.\\ $E.g.,$ in the protobuf grammar in \hyperref[5.3]{5.3}, the non-terminal '\texttt{content}' gets assigned two parameters '\texttt{fn}' and '\texttt{wt}' with the notation '\texttt{content[$\rightarrow$(fn, wt, $\ell$)]}'. With these parameters, either the \texttt{c-condition} or the \texttt{s-condition} evaluates to true and helps to decide which production in lines 4 or 5 will get executed, if any.
+\end{itemize}
+
+\subsection{Netstring Grammar}
+\label{5.2}
+At first, we will present a Calc-EBNF proposition for netstrings without using bits as terminals for clarity. Therefore, in the first version below, the set of terminals in the grammar is \{\texttt{0}, \texttt{1}, \texttt{2}, \texttt{3}, \texttt{4}, \texttt{5}, \texttt{6}, \texttt{7}, \texttt{8}, \texttt{9}, \texttt{:}, \texttt{,}, \texttt{byte}\}\footnote{The comma ("\texttt{,}") also belongs to these terminals.}. After this first grammar, the exact representation of this same Calc-EBNF in binary will be given.
+\begin{itemize}
+    \item[] \texttt{netstring := 0 [$\ell\leftarrow$]length : container[$\rightarrow\ell$]} 
+    \item[] \texttt{netstring := [$\ell\leftarrow$]length : string[$\rightarrow\ell$]}
+    \item[] \texttt{container[$\ell$+cp$<$stack-val] := [push($\ell$+cp+1)] concatenation$^\ell$ , [pop]}
+    \item[] \texttt{string[$\ell$+cp$<$stack-val] := byte$^\ell$ ,}
+    \item[] \texttt{concatenation := netstring concatenation$^*$}
+    \item[] \texttt{length := non-zero-digit digit$^*$}
+    \item[] \texttt{non-zero-digit := 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}
+    \item[]\texttt{digit := 0 | non-zero-digit}
+\end{itemize}
+To be consistent with binary representation, the following grammar is equivalent to the Calc-EBNF above but each terminal is broken down into it's binary ASCII representation \cite{ASCII-table}, where the set of terminal symbols is \{\texttt{0},\texttt{1}\}.
+\begin{itemize}
+    \item[] \texttt{netstring := \{0\}$^8$ [$\ell\leftarrow$]length 00111010 container[$\rightarrow\ell$]} 
+    \item[] \texttt{netstring := [$\ell\leftarrow$]length 00111010 string[$\rightarrow\ell$]}
+    \item[] \texttt{container[$\ell$+cp$<$stack-val] := [push($\ell$+cp+1)] concatenation$^\ell$ 00101100 [pop]}
+    \item[] \texttt{string[$\ell$+cp$<$stack-val] := byte$^\ell$ 00101100}
+    \item[] \texttt{concatenation := netstring concatenation$^*$}
+    \item[] \texttt{length := non-zero-digit digit$^*$}
+    \item[] \texttt{non-zero-digit := \{0\}$^4$0001 | \{0\}$^4$0010 | \{0\}$^4$0011 | \{0\}$^4$0100 | \{0\}$^4$0101 |\{0\}$^4$0110 | \{0\}$^4$0111 | \{0\}$^4$1000 | \{0\}$^4$1001}
+    \item[]\texttt{digit := \{0\}$^8$ | non-zero-digit}
+    \item[] \texttt{byte := \{0,1\}$^8$}
+\end{itemize}
+
+\subsection{Protobuf Grammar\footnote{For protobuf messages employing wire type = 2.}}
+\label{5.3}
+The following is an iteration of a possible Calc-EBNF for Google's protocol buffers:
+\begin{itemize}
+    \item[] \texttt{protobuf:= type [$\ell\leftarrow$]length content[$\rightarrow$(fn, wt, $\ell$)]}
+    \item[] \texttt{type := 0 [fn$\leftarrow$]field-number [wt$\leftarrow$]wire-type}
+    \item[] \texttt{length := msb-set-varint$^*$ msb-unset-varint}
+    \item[] \texttt{content[c-condition[$\rightarrow$(fn, wt, $\ell$)]] := [push($\ell$+cp)] protobuf$^\ell$ [pop]}
+    \item[] \texttt{content[s-condition[$\rightarrow$(fn, wt, $\ell$)]] := byte$^\ell$}
+    \item[] \texttt{c-condition := lookup(fn)==container $\wedge$ wt==010 $\wedge$ $\ell$+cp $\leq$ stack-val}
+    \item[] \texttt{s-condition := lookup(fn)==string $\wedge$ wt==010 $\wedge$ $\ell$+cp $\leq$ stack-val}
+    \item[] \texttt{msb-set-varint := 1\{0,1\}$^7$}
+    \item[] \texttt{msb-unset-varint := 0\{0,1\}$^7$}
+    \item[] \texttt{wire-type := 000 | 001 | 010 | 011 | 100 | 101}
+    \item[] \texttt{field-number := \{0,1\}$^4$}
+    \item[] \texttt{byte := \{0,1\}$^8$}
+\end{itemize}
+As one might notice when looking at the '\texttt{type}' non-terminal and at the limited size of the '\texttt{field-number}', that this grammar is restricted to protobufs employing a type field of one byte only. In practice, a \textit{varint} key can precede the \texttt{field-number} and can therefore prolong the type field by more bytes \cite{google-protobuf-wire-type}. For simplicity, though, and as the core features of Calc-EBNFs can be seen even with this restriction, we decided to use this restricted protobuf form, just as in our Calc-PDA for protobufs.

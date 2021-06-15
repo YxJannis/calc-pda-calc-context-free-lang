@@ -1,0 +1,242 @@
+\section{Calc-PDA - An Automaton for Calc-LL(1) Languages}
+\label{4.0}
+\subsection{Introduction}
+\label{4.1}
+An extended definition of Calc-regular languages also requires an extended definition of Calc-FSMs. For Calc-regular languages a Calc-finite state machine is used as it is derived from regular languages where FSMs are also used. In an abstract perspective, an automaton model for Calc-LL(1) languages requires one more level of complexity than that of Calc-FSMs. When looking at Chomsky's hierarchy for formal languages \cite{Chomsky-Hierarchy}, pushdown automata (PDAs) are one level of complexity above finite state machines (FSMs). With this in mind, we define the Calc-pushdown automaton (Calc-PDA) as the automaton model for Calc-LL(1) languages.\\\\
+To recap our core motivation, this automaton model should help with parsing length-delimited messages that can employ variable nesting. Messages that are formed correctly have to get parsed while messages that contain any sort of ill-formed features have to be rejected as soon as this malformation becomes clear to the machine. This includes detecting messages that are longer than the length-prefix intended, detecting malformed container structures, terminating correctly without compromising any bytes and many more cases.\\\\
+As explained before in \hyperref[3.0]{3}, we only look at deterministic languages, therefore one could also say that we are defining a Calc-deterministic pushdown automaton (Calc-DPDA). In this thesis, however, we include the need for determinism in the core definition of our automaton so there is no difference in calling it Calc-DPDA or simply Calc-PDA. On the following pages, the process of creating the current\footnote{As of August, 2019.} iteration of the Calc-PDA definition for two example languages is explained in detail. These example languages are \hyperref[1.4]{netstrings} and \hyperref[1.5]{Google's protocol buffers (protobufs)}.
+
+\subsection{Basic Components of Calc-PDAs}
+\label{4.2}
+When working with length-prefix languages and the respective Calc-PDA, one can see very quickly that the features employed in a regular PDA for context-free languages are not sufficient for the desired purpose. We not only want to parse these length-prefix messages, we also need to evaluate if the length-prefix value and the message's content length are equal or not. Therefore, we defined several additional properties for the Calc-PDA:
+\begin{itemize}
+    \item \textbf{Container-stack}\\This is a primitive stack which holds all integer values where each value represents the position of the whole message structure where a container ends. The topmost value gets popped from the stack each time the parser recognizes the end of a container's boundaries. This stack is necessary to allow for variably nested containers. The initial value on the stack is $\infty$.
+    \item \textbf{Current position}\\This variable always holds one integer value. It is initialized with zero at the start of each message and incremented by one for each byte read during the parsing procedure. Therefore, this variable always represents the current byte position of the parser during the parsing procedure. The parser/Calc-PDA always needs to be aware of the current position to check for \textbf{each} byte, if the boundaries of an upper container have been exceeded. If this is the case, the length-prefix message is ill formed and the parsing of this message is terminated immediately.
+    \item \textbf{Accumulator}\\The accumulator was also used in Calc-regular languages as explained in \hyperref[2.1]{2.1}. In the Calc-PDA definition, one accumulator is always active and behaves exactly as it does in the definition of Calc-regular languages. It can store bytes, transform them into a numerical representation to any base, and will then decrement its value by one for every content-byte read during parsing until it reaches zero.
+    \item \textbf{Conditions}\\Logical conditions are the main factor for determining the next possible transition for the Calc-PDA. A condition always compares integer values using the \textit{current position}, the topmost symbol of the \textit{container stack} or an \textit{accumulator}.
+    \item \textbf{Operations}\\An operation is basically a function which can be called at the end of any transition in a Calc-PDA. So far\footnotemark[6] there exist eight operations that are defined for the Calc-PDA:\\
+    \begin{itemize}
+        \item \texttt{store:} Takes the byte read during the transition and appends it to the string of bytes already stored in the accumulator.
+        \item \texttt{toNum:} All bytes stored in the accumulator get evaluated in the order they were read and transformed into a numerical representation to any base (\textit{e.g.} decimal), the value remains in the accumulator as a single integer.
+        \item \texttt{decr:} An integer value in the accumulator gets decremented by 1. This requires the accumulator to hold a valid integer.
+        \item \texttt{reset:} The accumulator's contents get replaced with the empty string.
+        \item \texttt{push($x$):} The integer value $x$ gets pushed onto the container stack. $x$ is always the value that had been stored inside the accumulator and has to be an integer, which means that the operation \texttt{toNum} must have been called prior to the \texttt{push} operation.
+        \item \texttt{pop:} The topmost integer value gets popped from the container stack.
+        \item \texttt{evaluateBytes($n$):} In the case of schema languages (\textit{e.g.} protobuf), type fields may contain important information about the nesting property of the underlying message. Therefore, the information in these type field bytes has to be evaluated. $n$ describes the amount of bytes that represent the type field. This operation can return the information extracted from these type field bytes to save them into variables\footnote{This feature will get clearer when discussing a Calc-PDA for protobufs in later chapters.}.
+        \item \texttt{lookup($y$):} Also exclusively used for schema languages. If a type field does contain crucial information about the nesting properties, this operation determines whether an input $y$ taken from the operation \texttt{evaluateBytes($n$)} corresponds to either a single message or a container. It does so by looking through the given schema for this message. This operation returns either \textit{'string'} (for a single non-container message) or \textit{'container'} (for a message acting as a container). The output can then be used for a condition to determine which transition to execute next\footnotemark[7].
+    \end{itemize}
+\end{itemize}
+It is important to mention, that contrary to a conventional PDA for context-free languages, Calc-PDAs choose the next transition based on two factors: The condition of a transition and its lookahead token (as described in \hyperref[3.1]{3}). Both these factors form a conjunction which has to be evaluated to true for a transition to fire.\\\\
+On the following pages, some figures of automatons will get presented. In order to increase clarity, we use abbreviations for some features presented above: \texttt{'cp'} stands for the current position variable, \texttt{'stack'} describes the container stack, \texttt{'acc'} is the acronym for the accumulator and the \texttt{'stack-value'} represents the topmost value on the container stack. 
+\subsection{A Calc-PDA for Netstrings}
+\label{4.3}
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{fig/Calc-PDA-netstrings-version_8.png}
+    \caption{First iteration of a Calc-PDA specifically for netstrings.}
+    \label{fig:fig-2-netstring-Calc-pda-1}
+\end{figure}\hyperref[fig:fig-2-netstring-Calc-pda-1]{Figure 2} shows one of the first adoptions of a Calc-PDA specifically built for netstrings. This automaton is able to parse variably nested netstrings correctly, including the empty netstring \texttt{'0:,'}. Circles represent the states $\{q_0, q_1, q_2, q_3, q_4, q_5, q_6\}$ with $q_0$ being the initial state and $q_6$ a conditional accepting state. This means that $q_6$ only accepts when the condition '\texttt{stack.size==1}' is fulfilled while $q_6$ is active.
+\begin{figure}
+    \centering
+    \includegraphics[width=0.8\linewidth]{fig/transitions-netstring-version_8.png}
+    \caption{Transition structure of the Calc-PDA in \hyperref[fig:fig-2-netstring-Calc-pda-1]{Figure 2}}
+    \label{fig:fig-3-transition-netstring-Calc-pda-1}
+\end{figure}
+In \hyperref[fig:fig-3-transition-netstring-Calc-pda-1]{Figure 3} we can see the basic structure of a transition in this Calc-PDA for netstrings. A transition from one state $q_v$ to another state $q_w$ always consists of:
+\begin{itemize}
+    \item a condition, which has to be true for the transition to be considered,
+    \item the symbol, or byte in our case, that comes next and will be consumed by the transition. Hidden in this notation is the fact that the automaton has to evaluate the lookahead token (as described in \hyperref[3.2]{3.2}) at first. If the lookahead token is equal to the \textit{symbol}, it then continues executing the transition.
+    \item The third component is a set of multiple operations where each operation is called sequentially in order.
+\end{itemize}
+In \hyperref[fig:fig-2-netstring-Calc-pda-1]{Figure 2} you can see that we have added an \textit{'underlying condition'} that reads \texttt{'stack-val $>$ cp'}, which is a condition that has to be true for every transition except for $q_6 \rightarrow q_6$. This condition checks before every transition, if the current position of the parser does not exceed the length defined by the length-prefix of the netstring. One could also add this condition to each transition except $q_6 \rightarrow q_6$ but for increased clarity we defined this in an underlying condition. \\\\
+To understand this automaton more clearly, we will take a closer look at the procedure of processing netstrings with the Calc-PDA in \hyperref[fig:fig-2-netstring-Calc-pda-1]{Figure 2}.
+We always start in the state $q_0$. This state will only be visited \textbf{once} at the beginning, highlighting the importance of the first length-prefix defining the outer size of the whole message in a variably nested netstring. When the next token in our lookahead is a digit $\in \{1,2,3,4,5,6,7,8,9\}$\footnote{In \hyperref[fig:fig-2-netstring-Calc-pda-1]{Figure 2} the notation "1-9" means that each digit from 1 up to 9 could be read. } and the underlying condition is true, the machine now proceeds to the state $q_1$ and starts processing a simple netstring not acting as a container. This is always done by visiting the states $q_1 \rightarrow q_2 \rightarrow q_6$ in that order.\\\\
+While in $q_1$, the digits that form the length-prefix get read one by one and stored in the accumulator. If the lookahead-token equals a colon (\texttt{":"}) and the underlying condition still evaluates to true, the transition $q_1 \rightarrow q_2$ gets executed, the colon gets processed and the operation \texttt{toNum} gets called. This operation transforms the contents of the accumulator into the integer value defined in the length-prefix.\\\\
+In state $q_2$, arguably the most important condition has to be evaluated. By checking if \texttt{'acc+cp $<$ stack-val'} equals true, the automaton can see if a nested netstring exceeds the upper container's size before any of the netstring's content bytes get read. \texttt{Stack-val} always represents the position in the whole netstring construct where the last container recognized by the parser ends. If the current position (\texttt{cp}) of the parser plus the length of the current netstring (\texttt{acc}) have a strictly lower value than the \texttt{stack-val}, the current netstring is within bounds of its corresponding container and the parsing may continue. In $q_2$, all content-bytes now get parsed one by one, decrementing the accumulator by one for every byte processed.
+If the accumulator then equals zero (and the underlying condition still holds true), a comma (\texttt{","}) is expected and the transition $q_2 \rightarrow q_6$ gets executed. During this transition, the accumulator's contents get replaced by the empty string due to the operation \texttt{reset}.\\\\
+In state $q_6$, the machine first checks if the size of the container stack equals one. If this is the case, it accepts since all containers have been completed and parsed successfully. Keep in mind, that the initial value always remains on the stack, which is why we accept at a stack size of one instead of zero. Should the stack be of size greater than one, the automaton can execute three possible transitions:
+\begin{itemize}
+    \item If the condition \texttt{'cp==stack-val'} holds true, a comma (\texttt{","}) is expected, processed and the topmost value on the container stack (\texttt{stack-val)} gets popped and discarded. This transition leads back to $q_6$ and, in practice, finalizes the parsing procedure for a container.
+    \item If the underlying condition \texttt{'cp < stack-val'} holds true and the lookahead equals a digit $\in \{1,2,3,4,5,6,7,8,9\}$, the machine recognizes another simple non-container netstring and proceeds to state $q_1$.
+    \item If the underlying condition holds true and the lookahead equals a zero, the automaton recognizes a netstring representing a container and proceeds to state $q_3$.
+\end{itemize}
+If the first digit of the length-prefix is zero, the automaton always ends up in state $q_3$. From here on, the fringe case of the empty netstring can be detected: if the lookahead is equal to a colon (\texttt{":"}) and not a digit, transition $q_3 \rightarrow q_2$ is executed. Otherwise, should the lookahead contain a digit from zero to nine, a container is recognized and transition $q_3 \rightarrow q_4$ gets called.\\\\
+In $q_4$, digits get read one by one and stored in the accumulator and if the lookahead contains a colon (\texttt{":"}), the accumulators values get evaluated to an integer number by calling \texttt{toNum} during $q_4 \rightarrow q_5$.\\\\
+Then, for the transition $q_5 \rightarrow q_6$ to execute, the condition \texttt{'acc+cp < stack-val'} has to hold true to make sure that the newly read netstring container does not exceed any container that it is contained in. If this condition is validated, the integer value \texttt{'acc+cp+1'} is pushed onto the container stack. This value represents the position where this specific container ends in the entire netstring structure that is currently processed by the machine.\\\\
+As a side note, this machine can easily be transformed into one that accepts netstrings that do not use the end-of-content comma. By just removing the comma from transitions $q_2 \rightarrow q_6$ and $q_6 \rightarrow q_6$, this can be achieved rather easily. This also shows that the comma in the original netstring definition does not serve any purpose other than to increase human readability. Arguably, though, human readability really does not have to be guaranteed in data serialization.
+
+
+\subsection{Parsing Procedure for Netstring Examples}
+\label{4.4}
+To strengthen the understanding of the machine's procedure, we will present several examples of netstrings being processed by the Calc-PDA for netstrings. Tables \hyperref[tab:tab1-netstring-1-Calc-pda-state-sequence]{1}, \hyperref[tab:tab2-netstring-2-Calc-pda-state-sequence]{2}, \hyperref[tab:tab3-netstring-3-Calc-pda-state-sequence]{3} and \hyperref[tab:tab4-netstring-4-Calc-pda-state-sequence]{4} list the sequence of states visited during the processing of the corresponding netstring. $q_i$ with $i \in \{0,1,2,3,4,5,6\}$ represents a state, the arrow ($\rightarrow$) highlights a transition between two states and the symbol below each arrow signals the current symbol of the netstring being parsed or the operation being performed during that transition. In the end we either accept in $q_6$ if there is only  the initial value on stack or we reject if this accepting condition does not hold while in $q_6$ or if in any other state, no more transitions can be fired. The reader may go through the automaton step by step and validate their choices by looking at the given sequence. We will list four examples below, although, in practice, there are many more cases where the automaton parses correctly and recognizes errors and malformed netstrings.\\
+\begin{table}
+    \centering
+    \begin{tabular}{|lllllllllll|}\hline
+         $\rightarrow q_0$ &$\rightarrow q_3$ & $\rightarrow q_4$ & $\rightarrow q_4$ & $\rightarrow q_5$ & $\rightarrow q_6$ & $\rightarrow q_1$ & $\rightarrow q_2$ & $\rightarrow q_2$ & $\rightarrow q_2$ & $\rightarrow q_2$  \\
+        & \texttt{0} &\texttt{2} &\texttt{0} &\texttt{:} & \tiny{push(20+4)} & \texttt{5}&\texttt{:} & \texttt{H} & \texttt{e} & \texttt{l}\\[10pt]\hline
+        $\rightarrow q_2$ &$\rightarrow q_2$ &$\rightarrow q_6$ &$\rightarrow q_3$&$\rightarrow q_4$ &$\rightarrow q_5$ &$\rightarrow q_6$ &$\rightarrow q_1$ &$\rightarrow q_2$ &$\rightarrow q_2$ &$\rightarrow q_2$\\
+         \texttt{l} & \texttt{o} & \texttt{,} & \texttt{0} & \texttt{8} & \texttt{:}& \tiny{push(8+15)} & \texttt{5}& \texttt{:}& \texttt{W} & \texttt{o} \\[10pt]\hline
+        $\rightarrow q_2$ &$\rightarrow q_2$ &$\rightarrow q_2$ &$\rightarrow q_6$ &$\rightarrow q_6$ &$\rightarrow q_6$ &$\rightarrow q_6$ &$\rightarrow q_6$ & $\rightarrow$ \tiny{accept} & & \\
+        \texttt{r} & \texttt{l} & \texttt{d} & \texttt{,} & \tiny{pop} & \texttt{,}& \tiny{pop} & \texttt{,}  &  & \\[10pt]\hline
+    \end{tabular}
+    \caption{Calc-PDA state sequence for the netstring '\texttt{020:5:Hello,08:5:World,,,}'.}
+    \label{tab:tab1-netstring-1-Calc-pda-state-sequence}
+\end{table}
+\\\hyperref[tab:tab1-netstring-1-Calc-pda-state-sequence]{Table 1} highlights the parsing of the well-formed netstring '\texttt{020:5:Hello,08:5:World,,,}' where the machine correctly accepts in the end.\\
+\begin{table}
+    \centering
+    \begin{tabular}{|llllll|}\hline
+         $\rightarrow q_0$ &$\rightarrow q_3$ & $\rightarrow q_4$ & $\rightarrow q_5$ & $\rightarrow q_6$ & $\rightarrow$ \tiny{reject}\\
+        & \texttt{0} &\texttt{7} &\texttt{:} &\tiny{push(7+4)} &   \\[10pt]\hline
+    \end{tabular}
+    \caption{Calc-PDA state sequence for the message '\texttt{07:Testing,}'.}
+    \label{tab:tab2-netstring-2-Calc-pda-state-sequence}
+\end{table}
+\\\hyperref[tab:tab2-netstring-2-Calc-pda-state-sequence]{Table 2} highlights the malformed netstring '\texttt{07:Testing,}'. The first length-prefix indicates a container but the content does not resemble another netstring with a length-prefix, which would be required. Instead it only contains a simple string. This netstring gets rejected eventually in $q_6$, when the look-ahead token can not be recognized as either \texttt{"1-9"} or \texttt{"0"} and the accepting condition (\texttt{stack.size==1)} is not met. Keep in mind that the only error in this netstring is the leading zero at the beginning of the length-prefix, as this indicates a container. By removing this zero, one would have a perfectly fine (non-nested) netstring.\\
+\begin{table}
+    \centering
+    \begin{tabular}{|lllllllllll|}\hline
+         $\rightarrow q_0$ & $\rightarrow q_3$ & $\rightarrow q_4$ & $\rightarrow q_4$ & $\rightarrow q_5$ & $\rightarrow q_6$ &$\rightarrow q_1$ & $\rightarrow q_2$ & $\rightarrow q_2$ & $\rightarrow q_2$ & $\rightarrow q_2$\\
+        &\texttt{0}&\texttt{1}&\texttt{1}&\texttt{:}&\tiny{push(11+6)}& \texttt{5} &\texttt{:} &\texttt{T} & \texttt{o} & \texttt{o}\\[10pt]\hline
+         $\rightarrow q_2$ &$\rightarrow$ \tiny{reject} & & & & & & & & &\\
+         \texttt{l} & \texttt{o} & & & & & & & & &\\[10pt]\hline
+    \end{tabular}
+    \caption{Calc-PDA state sequence for the message '\texttt{011:5:Toolong,,}'.}
+    \label{tab:tab3-netstring-3-Calc-pda-state-sequence}
+\end{table}
+\\\hyperref[tab:tab3-netstring-3-Calc-pda-state-sequence]{Table 3} represents the parsing procedure of the malformed netstring '\texttt{011:5:Toolong,,}'. Here, the size of the contents of the inner, nested netstring exceed the declared length-prefix. Therefore, the parsing has to stop immediately after the fifth content byte of the inner netstring has been read, as this is the point where the parser notices the error and prevents additional bytes to be compromised.\\
+\begin{table}
+    \centering
+    \begin{tabular}{|lllllllllll|}\hline
+         $\rightarrow q_0$ &$\rightarrow q_1$ & $\rightarrow q_2$ & $\rightarrow q_2$ & $\rightarrow q_2$ & $\rightarrow q_2$ & $\rightarrow q_6$ & $\rightarrow$ \tiny{accept} & & &\\
+        & \texttt{3} &\texttt{:} &\texttt{a} & \texttt{b} & \texttt{c} & \texttt{,} & & & &\\[10pt]\hline
+    \end{tabular}
+    \caption{Calc-PDA state sequence for the message '\texttt{3:abc,xyz}'.}
+    \label{tab:tab4-netstring-4-Calc-pda-state-sequence}
+\end{table}
+\\Finally, \hyperref[tab:tab4-netstring-4-Calc-pda-state-sequence]{Table 4} shows the parsing behaviour of the Calc-PDA for the example string'\texttt{3:abc,xyz}' and therefore the behaviour when appending arbitrary symbols behind its end-of-content symbol (\texttt{','}). The parsing correctly stops after the comma has been read, as the accepting condition that the container stack's size is equal to one is met while the machine is in state $q_6$. This accepts the netstring and the following symbols '\texttt{xyz}' do not get considered. In practice, these additional symbols could be used as some sort of padding.
+
+\subsection{Guaranteeing Determinism in Calc-PDAs}
+\label{4.5}
+As mentioned in earlier chapters, the Calc-PDA has to be deterministic in all steps. A nondeterministic approach does not yield much practical use, especially not when considering data serialization where we operate on a low level of computational complexity. When examining the Calc-PDA for netstrings in \hyperref[fig:fig-2-netstring-Calc-pda-1]{Figure 2}, we can see that there is one transition $(q_5 \rightarrow q_6)$ that is different from other transitions. It does not read or process a symbol, we have replaced it with an $\varepsilon$ instead. This is a crucial transition, as it represents a step from a potential parser where it does \underline{not} process an input symbol and therefore also a step where the current position of the parser does not change. This characteristic is due to the necessary sequential execution of some operations and conditions that depend on each other. The accumulators contents have to be converted to a numerical representation by calling the operation \texttt{toNum} in transition $(q_4 \rightarrow q_5)$ before the condition in $(q_5 \rightarrow q_6)$ can use this accumulator value to check if \texttt{'acc+cp $<$ stack-val'} equals true.\\\\
+The structure of a Calc-PDA transition in mind, we can now formulate exact requirements for such a transition to be valid in a Calc-PDA:
+\begin{itemize}
+    \item Trivially, a state $q_v$ where the transition starts and a state $q_w$ where it ends have to be known ($q_v \rightarrow q_w$),
+    \item a condition $c$ which can be any logical conjunction as described in \hyperref[4.3]{4.3},
+    \item optionally, a lookahead-token $z$. This is not necessarily required as discussed earlier in this chapter when looking at transition $q_5 \rightarrow q_6$.
+    \item a finite set $O$ of valid Calc-PDA operations.
+\end{itemize}
+A transition in the Calc-PDA, which is deterministic by definition, is only valid if with the inputs $q_v,c,z$, there exists at maximum one possible $q_w$ that can be reached.\\\\
+As this can be rather unintuitive to grasp, we were prompted to search for a more exact visual representation of transitions in the Calc-PDA. Eventually, we decided to partition each transition into three subparts: The condition, the symbol read, and the set of operations performed. This ultimately leads to a Calc-PDA for netstrings as seen in \hyperref[fig:fig-4-netstring-Calc-pda-2]{Figure 4}.
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{fig/Calc-PDA-netstrings-version_10.png}
+    \caption{Final iteration of a Calc-PDA specifically for netstrings.}
+    \label{fig:fig-4-netstring-Calc-pda-2}
+\end{figure}
+While this automaton looks much more complex than the one in \hyperref[fig:fig-2-netstring-Calc-pda-1]{Figure 2}, they are both equal. Importantly, though, this reworked automaton has more of the core definitions embedded visually. While the look-ahead was not specifically mentioned in the conditions of the first iteration, it is now properly included. The 'underlying condition' which was introduced in the first version has also been moved to the respective transitions.
+\begin{figure}
+    \centering
+    \includegraphics[width=0.8\linewidth]{fig/transitions-netstring-version_10.png}
+    \caption{Transition structure of the Calc-PDA in \hyperref[fig:fig-4-netstring-Calc-pda-2]{Figure 4}.}
+    \label{fig:fig-5-transition-netstring-Calc-pda-2}
+\end{figure}\\\\
+The structure of such a newly defined transition from one state $q_v$ to another state $q_w$ can be seen in \hyperref[fig:fig-5-transition-netstring-Calc-pda-2]{Figure 5}. Conditions are now represented by diamonds where each condition-diamond may only have one input-arrow from states (circles) exclusively. These condition-diamonds can have more than one outgoing arrow, representing the power of these condition that enables them to make deterministic decisions. In other words, each condition-diamond can evaluate which state should be reached next based on several possible conditions. These conditions $c_1,c_2,...,c_n$ have to be distinct from each other, meaning $c_i \wedge c_j = \texttt{false}$  $\forall i,j = \{1,2...,n\}$ and $i\neq j$. In practice, the maximum conditions per diamond we used was three in the condition-diamond for state $q_6$. In theory, though, each condition-diamond can have an arbitrary number of conditions, as long as they fulfill their requirements.\\\\
+After each branch coming from a condition-diamond, a symbol may be read although it is not required (as seen in state $q_5\rightarrow q_6$). Subsequently, if a symbol (or byte) is read, the current position value also gets incremented by one. Finally, before state $q_w$ is reached where the transition converges to, all operations performed are listed in curly brackets notating a set. By adding a triangle just before the end of the transition, we represent the set of operations as the third subpart of a transition\footnote{One could redefine the initial triangle used to represent the starting state $q_0$ as an operation triangle with an operation \texttt{initialize} to be consistent with the definition.}.
+\subsection{A Calc-PDA for Protobufs}
+\label{4.6}
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{fig/Calc-protobuf-PDA-version-7-notitle.png}
+    \caption{Calc-PDA specifically for Google protocol buffers.}
+    \label{fig:fig-6-protobuf-Calc-pda-1}
+\end{figure}
+Netstrings are the representative for one form of length-prefix formats used. The next representative, which is also more commonly used in practice, represents another form of length-prefix languages. Whereas netstrings employ certain delimiters which are staples in each instance (such as the colon after each length-prefix and the comma as and end-of-content symbol), Google protocol buffers (protobufs) do not include such symbols. In protobufs, the first length byte follows immediately after the last type byte, and the first content byte follows immediately after the last length byte.\\\\ In \hyperref[fig:fig-6-protobuf-Calc-pda-1]{Figure 6} we can see a Calc-PDA for protobufs. The core functionality, of course, remains the same, using container-stack, accumulator, etc. As already defined in \hyperref[4.2]{4.2}, this Calc-PDA uses two additional operations which are crucial to length-prefix languages that convey nesting-information in their type fields and schema files. Protobufs specifically include two variables in their type fields: \texttt{'wire type'} and \texttt{'field number'}. The wire type mainly discloses the type of message and what it is used for. We focus on \texttt{wire type = 2}, as this defines a length-delimited message that can represent either strings, embedded messages or packed repeated fields \cite{google-protobuf-wire-type}. There exist five wire types in total, each marking slightly different properties. For example, wire type 1 represents only 64 bit blocks, which therefore do not have to employ length fields. The Calc-PDA does allow the extension to consider all wire types by branching out in the condition-diamond after state $q_1$. At this decision point, the wire type is important to decide which transition to consider next. \\\\Looking at messages of wire type 2, however, the \texttt{field number} of a message is linked to the schema file with the ending \texttt{.proto} which protobuf uses. This field number is important for us, as there is no way to determine if a message acts as a single string or as a container by just looking at the byte encoding. This crucial information can be extracted by searching for the \texttt{field number}, which is unique for each protobuf structure, in the corresponding \texttt{.proto} schema file. From there we can extract if a message acts as a single string or a container. In the Calc-PDA, we extract the \texttt{wire\_type} and \texttt{field\_num} by calling the operation \texttt{evaluateBytes} on the type byte which includes both these numbers. By employing the operation \texttt{lookup(field\_num)}, the \texttt{field number} is looked up in the schema file and either \texttt{'string'} or \texttt{'container'} is returned respectively. We use this output to evaluate conditions in the condition-diamond following state $q_1$. We treat these operations \texttt{evaluateBytes}, \texttt{lookup}, as well as the operation \texttt{toNum} as oracle operations, which always return the correct output we need. We do not specify their exact functionality in detail, as this would exceed the current scope of our research. From our perspective, though, these operations should be able to be implemented rather easily.\\\\
+As protobuf does not include a symbol which marks the end of the length field, the end of a variably sized length field has to be signaled otherwise. Therefor, protobuf uses so-called 'varints' to represent integer values in its length field. Each byte in a varint, except for the last one, has the most signficant bit set. Therefore, by detecting that the most significant bit has been set to zero in a byte, one can determine that this is the last byte in the length field. The last seven bits from each byte are used to store the binary representation of the integer in groups of seven bits with the least significant group first \cite{google-protobuf-varints}. The usage of varints is the reason why after states $q_2$ and $q_3$ we check for the most significant bit (msb) being either 0 or 1 to determine when to stop parsing the length field. If \texttt{msb==1}, the automaton keeps parsing bytes and adds those values to the accumulator. If \texttt{msb==0}, however, the machine stores the last byte in the accumulator, evaluates its contents and proceeds to the next state $q_4$ or $q_5$ respectively.
+
+\subsection{Parsing Procedure for Protobuf Examples}
+\label{4.7}
+Just as presented in \hyperref[4.4]{4.4} for netstrings, Tables \hyperref[tab:tab5-protobuf-1-Calc-pda-state-sequence]{5} and \hyperref[tab:tab6-protobuf-2-Calc-pda-state-sequence]{6} show examples of protobuf-messages being processed by the corresponding Calc-PDA for protobufs in \hyperref[fig:fig-6-protobuf-Calc-pda-1]{Figure 6}. Again, $q_i$ with $i\in\{0,1,2,3,4,5,6\}$ represents a state, the arrow($\rightarrow$) highlights a transition between two states and the symbol below each arrow signals the current symbol of the netstring being parsed or the operation being performed during that transition. In the end we either accept or reject.\\
+\begin{table}
+    \centering
+    \begin{tabular}{|lllllllllll|}\hline
+         $\rightarrow q_0$ &$\rightarrow q_1$ & $\rightarrow q_3$ & $\rightarrow q_5$ & $\rightarrow q_6$ & $\rightarrow q_1$ & $\rightarrow q_3$ & $\rightarrow q_5$ & $\rightarrow q_6$ & $\rightarrow q_1$ & $\rightarrow q_2$\\
+        & \texttt{0A} &\tiny{container} &\texttt{12} & \tiny{push(18+2)} & \texttt{12} & \tiny{container} & \texttt{07} & \tiny{push(7+4)} & \texttt{1A} & \tiny{string} \\[10pt]\hline
+        $\rightarrow q_4$ &$\rightarrow q_4$ & $\rightarrow q_4$ & $\rightarrow q_4$ & $\rightarrow q_4$ & $\rightarrow q_4$ & $\rightarrow q_6$ & $\rightarrow q_1$ & $\rightarrow q_2$ & $\rightarrow q_4$ & $\rightarrow q_4$\\
+        \texttt{05} &\texttt{53} &\texttt{68} & \texttt{6F} & \texttt{72} & \texttt{74} & \tiny{pop} & \texttt{22} & \tiny{string} & \texttt{07}& \texttt{45} \\[10pt]\hline
+        $\rightarrow q_4$ &$\rightarrow q_4$ & $\rightarrow q_4$ & $\rightarrow q_4$ & $\rightarrow q_4$ & $\rightarrow q_4$ & $\rightarrow q_6$ & $\rightarrow$ \tiny{accept} & & & \\
+        \texttt{78} &\texttt{61} &\texttt{6D} & \texttt{70} & \texttt{6C} & \texttt{65} & \tiny{pop} &  &  & & \\[10pt]\hline
+    \end{tabular}
+    \caption{Calc-PDA state sequence for the protobuf-message '\texttt{0A 12 12 07 1A 05 53 68 6F 72 74 22 07 45 78 61 6D 70 6C 65}'.}
+    \label{tab:tab5-protobuf-1-Calc-pda-state-sequence}
+\end{table}
+\\Our first example will be a correctly formed protobuf-message. The structure of this message can be depicted as follows: "\texttt{container$_1$\{container$_2$\{string$_1$\}string$_2$\}}". \texttt{Container$_1$} holds a concatenation of another \texttt{container$_2$} and some \texttt{string$_2$}. The inner \texttt{container$_2$} also contains a \texttt{string$_1$}. In this case, we set \texttt{string$_1$} to '\texttt{Short}', and \texttt{string$_2$} to '\texttt{Example}'. Therefore, the structure of this protobuf-message looks like this: 
+\begin{center}
+    \texttt{$T_{c1}$ 18 $T_{c2}$ 7 $T_{s1}$ 5 S h o r t $T_{s2}$ E x a m p l e}
+\end{center} with $T_{c1}$, $T_{c2}$ as the type fields for each container and $T_{s1}$, $T_{s2}$ as type fields for each string respectively always followed by their corresponding length field. As we do need a byte representation of this message, we will convert this message into bytes with hexadecimal representation:
+\begin{center}
+    \texttt{0A 12 12 07 1A 05 53 68 6F 72 74 22 07 45 78 61 6D 70 6C 65}
+\end{center}
+We have set $T_{c1}$ to the byte '\texttt{0A}', meaning that \texttt{container$_1$}'s \textit{field number} equals 1 and their \textit{wire type} equals 2. For $T_{c2}, T_{s1}, T_{s2}$ the wire type is always 2, and we set their field numbers as follows: $T_{c2} \Rightarrow 2, T_{s1} \Rightarrow 3, T_{s2} \Rightarrow 4$. Keep in mind that each protobuf-message has to have a schema file (\texttt{.proto}-file). In this case, we omit creating such a file and simply define that the corresponding schema file marks field numbers 1 and 2 as containers and field numbers 3 and 4 as simple strings. \hyperref[tab:tab5-protobuf-1-Calc-pda-state-sequence]{Table 5} shows the parsing procedure of this message using the Calc-PDA for protobufs.\\
+\begin{table}
+    \centering
+    \begin{tabular}{|lllllllllll|}\hline
+         $\rightarrow q_0$ &$\rightarrow q_1$ & $\rightarrow q_3$ & $\rightarrow q_5$ & $\rightarrow q_6$ & $\rightarrow q_1$ & $\rightarrow q_2$ & $\rightarrow q_4$ & $\rightarrow$ \tiny{reject} & & \\
+        & \texttt{2A} &\tiny{container} &\texttt{04} & \tiny{push(4+2)} & \texttt{32} & \tiny{string} & \texttt{07} & \texttt{74} &  & \\[10pt]\hline
+    \end{tabular}
+    \caption{Calc-PDA state sequence for the message '\texttt{2A 04 32 07 74 6F 6F 6C 6F 6E 67}'.}
+    \label{tab:tab6-protobuf-2-Calc-pda-state-sequence}
+\end{table}
+\\The second message example is the protobuf-like message '\texttt{2A 04 32 07 74 6F 6F 6C 6F 6E 67}' with the structure \texttt{container$_1$\{string$_1$\}}. In this case, the length-prefixes for \texttt{container$_1$} and \texttt{string$_1$} are "\texttt{04}" and "\texttt{07}" respectively and the content of \texttt{string$_1$} is the text "\texttt{Toolong}". 
+\begin{center}
+    \texttt{$T_{c1}$ 4 $T_{s1}$ 7 T o o l o n g}
+\end{center}
+In this case, $T_{c1}$, the type field for \texttt{container$_1$} contains the wire type 2 and the field number 5, which corresponds to a container in the schema file. $T_{s1}$, the type field for \texttt{string$_1$} contains the wire type 2 and the field number 6 associated with a string in the schema file.
+Since the length-prefix for \texttt{container$_1$} only reads 4 (in decimal representation) but \texttt{string$_1$} is much longer than 4 bytes, this is not a valid protobuf message. In \hyperref[tab:tab6-protobuf-2-Calc-pda-state-sequence]{Table 6} you can see that the Calc-PDA parses this string correctly and terminates as soon as it detects this flaw, right after reading the length field of \texttt{string$_1$}. As \texttt{string$_1$}'s length field equals 7, the necessary condition '\texttt{acc+cp $\leq$ stack-val}' does not hold, as '\texttt{7+4 $\nleq$ 6}'. With this condition evaluating to false, no more transition can be executed and the machine rejects the input.
+\subsection{Condensed, Formal Definition for Calc-PDAs}
+\label{4.8}
+We define a Calc-PDA as a deterministic automaton $M=(Q,\Sigma,\Gamma, \delta, q_0,Z,q_f)$:
+\begin{description}
+    \item[$Q$] is a finite set of states $q_0, q_2,...q_n$ with $n = |Q|-1$.
+    \item[$\Sigma$] is the input alphabet. In the case of data serialization: $\Sigma =$ all possible bytes.
+    \item[$\Gamma$] $=\mathbb{N}$ is the container stack alphabet.
+    \item[$\delta$] $\in Q \times C \times \Sigma\cup\varepsilon \times O \times Q$ is the transition relation, where $C$ is a conjunction of $1,2,...n$ \textit{conditions} $c_i$ with $C=c_1 \land c_j \land ... \land c_n \ |\ 1 \leq j \leq n$ and $O$ is a finite set of \textit{operations}\footnote{$O$ can also be the empty set.}.
+    \item[$q_0$] $\in Q$ is the starting state.
+    \item[$Z$] $\in \Gamma\cup\infty$ is the initial stack symbol (in theory, always $Z=\infty$).
+    \item[$q_f$] $\in Q$ is the accepting state. This state only accepts when the condition \texttt{'stack.size==1'} is met while $q_f$ is active.
+\end{description}
+\textbf{Unique features in Calc-PDAs} (as explained in \hyperref[4.2]{4.2})\textbf{:}
+\begin{itemize}
+    \item Container stack
+    \item Current position
+    \item Accumulator
+    \item Conditions
+    \item Operations
+\end{itemize}\vspace{10pt}
+\textbf{The set of \textit{conditions}:}
+\begin{itemize}
+    \item \texttt{'cp$<$stack-val'}
+    \item \texttt{'cp$\leq$stack-val'}
+    \item \texttt{'acc+cp$<$stack-val'}
+    \item \texttt{'acc+cp$\leq$stack-val'}
+    \item \texttt{'cp$==$stack-val'}
+    \item \texttt{'acc$>$0'}
+    \item \texttt{'acc$==$0'}
+    \item \texttt{'lookahead$==x$'}
+    \item \texttt{'stack.size$==$1'}
+\end{itemize}
+\vspace{10pt}
+\textbf{The set of \textit{operations}:}
+\begin{itemize}
+    \item \texttt{'store'}
+    \item \texttt{'toNum'}
+    \item \texttt{'decr'}
+    \item \texttt{'reset'}
+    \item \texttt{'push($x$)'}
+    \item \texttt{'pop'}
+    \item \texttt{'}$int\big[$ $\big]$ \texttt{evaluateBytes($n$)'}
+    \item \texttt{'}$string$ \texttt{lookup($y$)'}
+\end{itemize}
+
+\subsection{The importance of the initial stack symbol $Z$}
+For the initial stack symbol $Z$, we generally use $\infty$ in our theoretical models, signaling that the value of the first length-prefix read by the machine can be of any size. This is obviously not applicable in practical use, as length-prefix messages with unlimited length can neither be detected nor handled by finite computers. In practice, therefore, choosing values other than $\infty$ for $Z$ can be very helpful for establishing length limits for messages. The first length-prefix of any message structure always defines the size of the complete message and is regulated by the initial stack value.\\\\ This works since the conditions that check if some nested structure would exceed its upper container, \texttt{'acc+cp < stack-val'} for netstrings or \texttt{'acc+cp $\leq$ stack-val'} for protobufs, will always use the initial stack-value for comparison in the first iteration of the machine. If this value is exceeded by \texttt{'acc+cp'}, the parsing procedure will terminate immediately. One could therefore also see the initial stack value $Z$ as some sort of invisible container with a constant size $Z$, where each message is included in such a container and can therefore not exceed their length $Z$.

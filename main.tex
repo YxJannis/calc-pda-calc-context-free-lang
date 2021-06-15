@@ -1,0 +1,76 @@
+\documentclass[a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{pdfpages}
+\usepackage{arxiv}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{lipsum}
+\usepackage{marvosym}
+\usepackage{makecell}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{epsfig}
+\usepackage{fontawesome}
+\usepackage[stable]{footmisc}
+\usepackage{amssymb}
+\usepackage[affil-it]{authblk}
+
+\renewcommand\theadalign{bc}
+\renewcommand\theadfont{\bfseries}
+\renewcommand\theadgape{\Gape[4pt]}
+\renewcommand\cellgape{\Gape[4pt]}
+\begin{document}
+
+
+\title{Formal Machines for Length Prefix Languages\\{\small Calc-PDAs for Netstrings and Google's Protocol Buffers}}
+\author{Jannis Leuther}
+\affil{Bauhaus-Universität Weimar}
+\date{09/2019}
+
+\maketitle
+
+% Abstract
+\begin{abstract}
+    This bachelor's thesis presents the results of research about language based security in the field of data serialization. Particularly, length-prefix formats are analyzed, which are a prominent form of serializing distinguishable messages in a data stream. These formats prepend a numerical value before the actual message representing the length of the message. Due to the lack of a theoretical, fundamental language class for length-prefix formats, many bugs, errors and also severe security vulnerabilities in existing implementations have appeared and sometimes been exploited in the past. By establishing a new language class called Calc-LL(1), we are trying to improve security and eliminate errors in length-prefix serialization. We approached this subject matter by using an existing definition for a less complex length-prefix language class, Calc-regular languages, as the starting point for our research. \\\\
+    The main contribution reviewed in this thesis is the creation of a formal machine for the new length-prefix language class Calc-LL(1) in form of an extended definition of a pushdown automaton, the Calc-PDA. By augmenting a regular pushdown automaton with additional features such as conditions and operations, a Calc-PDA is able to detect malformed length-prefix messages in a serialized data stream. There are plenty possibilities of such a message being malformed, the most prominent example as seen with the 'Heartbleed' bug in 2014, is some message content where its size does not match the length prefix. The Calc-PDA was implemented exemplarily for two formats which are used in practice in the real world: Netstrings and Google's Protocol Buffers. Additionally, besides the definition of a Calc-PDA, we started to construct an equivalent grammar definition for Calc-LL(1) languages, a Calc-EBNF. So far, it was created for both of our exemplary formats, but a universal definition is desired eventually, just as with Calc-PDAs.\\\\
+    We hope that these findings can add more to the superior goal of constructing a fundamental approach to length-prefix serialization handling. Ultimately, this can help eliminate countless bugs and help guarantee security for machines and users worldwide.
+\end{abstract}
+
+% Table of contents, List of figures, List of tables
+\newpage
+\tableofcontents
+\listoffigures
+\listoftables
+
+% First page
+\newpage
+\input{introduction}
+
+\newpage
+\input{calc-regular}
+
+\input{calc-ll1-languages}
+
+\input{calc-pda}
+
+\input{calc-ebnf}
+
+\input{conclusion}
+
+% Sources
+\newpage
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+
+\includepdf[pages={1}]{fig/Calc-PDA-netstrings-version_10.pdf}
+\includepdf[pages={1}]{fig/Calc-protobuf-PDA-version-7.pdf}
+
+\end{document}
