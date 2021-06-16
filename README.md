@@ -1,5 +1,8 @@
+# Formal Machines for Length-Prefix Languages
+## Calc-PDAs for Netstrings and Google's Protocol Buffers
 
-See .pdf in main folder.
+In this thesis, a formal automaton model (Calc-PDA) for Calc-Context-Free Languages was designed. 
 
+The thesis can be found in the main folder, or by [clicking this link](../blob/master/calc-pdas-for-calc-context-free-langs.pdf).
 
-Designing a formal automaton model for the language class of calc-context-free languages.
+More Information about Calc-Context-Free Languages can be found [here](https://langsec.org/spw21/papers/Jakoby_LangSec21.pdf).
